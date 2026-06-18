@@ -189,8 +189,8 @@ function spcRowToTrack(row: SpcCsvRow, sourceUrl: string): IngestTrack | null {
     max_width_yards: Math.trunc(numberOrZero(row.wid)),
     injuries: Math.trunc(numberOrZero(row.inj)),
     fatalities: Math.trunc(numberOrZero(row.fat)),
-    property_damage_usd: spcDamageToUsd(row.loss),
-    crop_damage_usd: spcDamageToUsd(row.closs),
+    property_damage_usd: spcDamageToUsd(row.loss, year),
+    crop_damage_usd: spcDamageToUsd(row.closs, year),
     begin_time: row.time,
     end_time: row.etime || row.time,
     source_file: sourceFile,
@@ -223,9 +223,24 @@ function numberOrZero(value: string) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function spcDamageToUsd(value: string) {
+function spcDamageToUsd(value: string, year: number) {
   const damage = numberOrZero(value);
-  return damage > 0 ? damage * 1_000_000 : 0;
+  if (damage <= 0) return 0;
+  if (year >= 1996) return Math.round(damage);
+
+  const categoryMidpoints: Record<number, number> = {
+    1: 275,
+    2: 2_750,
+    3: 27_500,
+    4: 275_000,
+    5: 2_750_000,
+    6: 27_500_000,
+    7: 275_000_000,
+    8: 2_750_000_000,
+    9: 27_500_000_000,
+  };
+
+  return categoryMidpoints[Math.trunc(damage)] ?? 0;
 }
 
 async function upsertBatch(batch: IngestTrack[]) {
