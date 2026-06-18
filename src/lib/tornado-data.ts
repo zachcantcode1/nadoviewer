@@ -2,7 +2,20 @@ export type DataStatus = "final" | "preliminary" | "survey";
 
 export type TornadoSource = "SPC" | "NCEI" | "NWS DAT";
 
-export type EfRating = "F5" | "EF5" | "EF4" | "EF3" | "EF2" | "EF1" | "EF0";
+export type EfRating =
+  | "EFU"
+  | "F0"
+  | "F1"
+  | "F2"
+  | "F3"
+  | "F4"
+  | "F5"
+  | "EF0"
+  | "EF1"
+  | "EF2"
+  | "EF3"
+  | "EF4"
+  | "EF5";
 
 export type TornadoTrack = {
   id: string;
@@ -26,16 +39,23 @@ export type TornadoTrack = {
   lastReviewed: string;
   narrative: string;
   coordinates: [number, number][];
+  geometryQuality?: "surveyed_path" | "spc_start_end" | "estimated_path";
 };
 
 export const ratingColors: Record<EfRating, string> = {
+  EFU: "#9aa6b2",
+  F0: "#8fb6c3",
+  F1: "#78b68c",
+  F2: "#d3b75f",
+  F3: "#d98a4a",
+  F4: "#c75b62",
+  F5: "#a56a9d",
   EF0: "#8fb6c3",
   EF1: "#78b68c",
   EF2: "#d3b75f",
   EF3: "#d98a4a",
   EF4: "#c75b62",
   EF5: "#a56a9d",
-  F5: "#a56a9d",
 };
 
 export const tornadoTracks: TornadoTrack[] = [

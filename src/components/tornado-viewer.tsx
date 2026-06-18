@@ -36,6 +36,7 @@ import {
   type TornadoSource,
   type TornadoTrack,
 } from "@/lib/tornado-data";
+import type { TornadoApiResponse, TornadoDataMode } from "@/lib/tornado-api";
 
 type Filters = {
   minYear: number;
@@ -45,14 +46,29 @@ type Filters = {
   source: TornadoSource | "All";
 };
 
-const allRatings: EfRating[] = ["EF0", "EF1", "EF2", "EF3", "EF4", "EF5", "F5"];
+const allRatings: EfRating[] = [
+  "EFU",
+  "F0",
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "EF0",
+  "EF1",
+  "EF2",
+  "EF3",
+  "EF4",
+  "EF5",
+];
 const allStatuses: DataStatus[] = ["final", "preliminary", "survey"];
+const legendRatings: EfRating[] = ["EFU", "F0", "F1", "F2", "F3", "F4", "F5", "EF0", "EF1", "EF2", "EF3", "EF4", "EF5"];
 const sourceOptions: Filters["source"][] = ["All", "SPC", "NCEI", "NWS DAT"];
 
 const initialFilters: Filters = {
   minYear: 2010,
   maxYear: 2026,
-  ratings: ["EF1", "EF3", "EF4", "EF5", "F5"],
+  ratings: ["EF1", "EF3", "EF4", "EF5", "F1", "F3", "F4", "F5"],
   statuses: allStatuses,
   source: "All",
 };
@@ -78,6 +94,12 @@ function statusLabel(status: DataStatus) {
   if (status === "final") return "Final";
   if (status === "survey") return "Survey";
   return "Prelim";
+}
+
+function geometryQualityLabel(quality: TornadoTrack["geometryQuality"]) {
+  if (quality === "surveyed_path") return "Surveyed path";
+  if (quality === "estimated_path") return "Estimated path";
+  return "SPC start/end line";
 }
 
 function buildTrackCollection(tracks: TornadoTrack[], selectedTrackId?: string) {
@@ -222,11 +244,12 @@ function getBounds(tracks: TornadoTrack[]): LngLatBoundsLike {
   ];
 }
 
-function matchesFilters(track: TornadoTrack, filters: Filters) {
+function matchesFilters(track: TornadoTrack, filters: Filters, selectedDate: string) {
   const year = Number(track.date.slice(0, 4));
   return (
     year >= filters.minYear &&
     year <= filters.maxYear &&
+    (!selectedDate || track.date === selectedDate) &&
     filters.ratings.includes(track.rating) &&
     filters.statuses.includes(track.dataStatus) &&
     (filters.source === "All" || track.source === filters.source)
@@ -239,20 +262,29 @@ export function TornadoViewer() {
   const initialSelectedTrackIdRef = useRef(tornadoTracks[0].id);
   const selectedTrackIdRef = useRef(tornadoTracks[0].id);
   const initialTracksRef = useRef<TornadoTrack[]>(
-    tornadoTracks.filter((track) => matchesFilters(track, initialFilters)),
+    tornadoTracks.filter((track) => matchesFilters(track, initialFilters, "")),
   );
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [tracks, setTracks] = useState<TornadoTrack[]>(tornadoTracks);
+  const [dataMode, setDataMode] = useState<TornadoDataMode>("seed");
+  const [dataMessage, setDataMessage] = useState("Curated seed data loaded.");
+  const [selectedDate, setSelectedDate] = useState("");
   const [selectedTrackId, setSelectedTrackId] = useState(tornadoTracks[0].id);
 
   const filteredTracks = useMemo(
-    () => tornadoTracks.filter((track) => matchesFilters(track, filters)),
-    [filters],
+    () => tracks.filter((track) => matchesFilters(track, filters, selectedDate)),
+    [filters, selectedDate, tracks],
   );
 
   const selectedTrack =
-    filteredTracks.find((track) => track.id === selectedTrackId) ?? filteredTracks[0] ?? tornadoTracks[0];
+    filteredTracks.find((track) => track.id === selectedTrackId) ?? filteredTracks[0] ?? tracks[0] ?? tornadoTracks[0];
+
+  const availableDates = useMemo(
+    () => Array.from(new Set(tracks.map((track) => track.date))).sort((a, b) => b.localeCompare(a)).slice(0, 700),
+    [tracks],
+  );
 
   const totals = useMemo(
     () => ({
@@ -267,6 +299,32 @@ export function TornadoViewer() {
   useEffect(() => {
     selectedTrackIdRef.current = selectedTrack.id;
   }, [selectedTrack.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTracks() {
+      try {
+        const response = await fetch("/api/tornadoes?limit=20000", { cache: "no-store" });
+        const payload = (await response.json()) as TornadoApiResponse;
+        if (cancelled || !payload.tracks.length) return;
+        setTracks(payload.tracks);
+        setDataMode(payload.dataMode);
+        setDataMessage(payload.message ?? "Supabase tornado rows loaded.");
+        setSelectedTrackId(payload.tracks[0].id);
+      } catch (error) {
+        if (!cancelled) {
+          setDataMessage(error instanceof Error ? error.message : "Unable to load remote tornado data.");
+        }
+      }
+    }
+
+    loadTracks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -403,7 +461,7 @@ export function TornadoViewer() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map?.isStyleLoaded() || !selectedTrack) return;
+    if (!map?.isStyleLoaded() || !selectedTrack || !filteredTracks.length) return;
 
     const trackSource = map.getSource("tracks") as GeoJSONSource | undefined;
     trackSource?.setData(buildTrackCollection(filteredTracks, selectedTrack.id));
@@ -484,7 +542,34 @@ export function TornadoViewer() {
           </div>
 
           <CollapsiblePanel icon={<Filter size={16} />} title="Filters" defaultOpen>
-            <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-xs text-slate-400">Event day</span>
+              <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <input
+                  className={`h-10 w-full rounded-md border border-white/10 ${controlSurface} px-2.5 text-sm text-slate-100 outline-none focus:border-cyan-300/60`}
+                  list="event-days"
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => setSelectedDate(event.target.value)}
+                />
+                <button
+                  aria-label="Clear event day"
+                  className={`flex h-10 w-10 items-center justify-center rounded-md border border-white/10 ${controlSurface} text-slate-200 transition hover:border-white/25`}
+                  onClick={() => setSelectedDate("")}
+                  title="Clear day"
+                  type="button"
+                >
+                  <RotateCcw size={15} />
+                </button>
+              </div>
+              <datalist id="event-days">
+                {availableDates.map((date) => (
+                  <option key={date} value={date} />
+                ))}
+              </datalist>
+            </label>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="text-xs text-slate-400">Start year</span>
                 <input
@@ -572,7 +657,10 @@ export function TornadoViewer() {
 
             <button
               className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.07] text-sm font-medium text-slate-100 transition hover:bg-white/[0.12]"
-              onClick={() => setFilters(initialFilters)}
+              onClick={() => {
+                setFilters(initialFilters);
+                setSelectedDate("");
+              }}
               type="button"
             >
               <RotateCcw size={15} />
@@ -607,9 +695,12 @@ export function TornadoViewer() {
                 Verified tracks, official event details, preliminary reports, and survey-ready
                 metadata prepared for SPC, NCEI, and NWS DAT ingestion.
               </p>
+              <p className="mt-2 text-xs text-slate-500">
+                {dataMode === "supabase" ? "Live Supabase data" : "Seed fallback"} · {dataMessage}
+              </p>
             </div>
             <div className={`grid grid-cols-2 gap-2 rounded-md border border-white/10 ${overlaySurface90} p-2 text-xs text-slate-300 shadow-2xl shadow-black/20 backdrop-blur md:grid-cols-4`}>
-              {allRatings.slice(1).map((rating) => (
+              {legendRatings.map((rating) => (
                 <div className="flex items-center gap-2 px-2 py-1.5" key={rating}>
                   <span
                     className="h-2.5 w-2.5 rounded-full"
@@ -631,10 +722,10 @@ export function TornadoViewer() {
                 <CalendarRange size={16} />
                 Event Timeline
               </div>
-              <p className="text-xs text-slate-400">{filters.minYear}-{filters.maxYear}</p>
+              <p className="text-xs text-slate-400">{selectedDate || `${filters.minYear}-${filters.maxYear}`}</p>
             </div>
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-              {filteredTracks.map((track) => (
+              {filteredTracks.length ? filteredTracks.map((track) => (
                 <button
                   className={`min-w-[172px] rounded-md border border-white/10 ${panelSurface} px-3 py-2 text-left transition hover:border-white/25 data-[active=true]:border-cyan-200/50 data-[active=true]:bg-cyan-200/10`}
                   data-active={track.id === selectedTrack.id}
@@ -654,7 +745,11 @@ export function TornadoViewer() {
                   <p className="mt-1 truncate text-sm font-medium text-slate-100">{track.name}</p>
                   <p className="mt-1 text-xs text-slate-400">{track.states.join(", ")}</p>
                 </button>
-              ))}
+              )) : (
+                <div className={`${panelSurface} min-w-[220px] rounded-md border border-white/10 px-3 py-3 text-sm text-slate-300`}>
+                  No tornadoes match the current filters.
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -714,6 +809,7 @@ export function TornadoViewer() {
               <Detail label="Status" value={statusLabel(selectedTrack.dataStatus)} />
               <Detail label="File/API" value={selectedTrack.sourceFile} />
               <Detail label="Reviewed" value={selectedTrack.lastReviewed} />
+              <Detail label="Geometry" value={geometryQualityLabel(selectedTrack.geometryQuality)} />
             </dl>
           </CollapsiblePanel>
 

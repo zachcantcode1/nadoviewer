@@ -8,7 +8,8 @@ The current app includes:
 - MapTiler style support
 - Interactive tornado tracks and event timeline
 - Source reliability panels
-- Seeded SPC/NCEI/DAT-shaped tornado records
+- Supabase-backed tornado track API with seeded fallback data
+- Protected SPC historical tornado ingestion route
 - Local state and county boundary overlays
 
 ## Stack
@@ -19,7 +20,7 @@ The current app includes:
 - Tailwind CSS
 - MapLibre GL
 - MapTiler basemap styles
-- Planned production data layer: Supabase Postgres + PostGIS
+- Supabase Postgres + PostGIS
 
 ## Local Setup
 
@@ -56,6 +57,8 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 DATABASE_URL=
+INGEST_SECRET=
+SPC_ACTUAL_TORNADOES_URL=
 ```
 
 For local development, `NEXT_PUBLIC_MAPTILER_STYLE_URL` can point directly to a MapTiler style endpoint:
@@ -65,6 +68,45 @@ https://api.maptiler.com/maps/<map-id>/style.json?key=<key>
 ```
 
 Do not commit `.env.local`.
+
+## Supabase Setup
+
+Run the SQL migration in `supabase/migrations/001_tornado_core.sql` from the Supabase SQL editor or a linked Supabase CLI project.
+
+The migration creates:
+
+- `public.tornado_tracks` with PostGIS `geometry(LineString, 4326)`
+- `public.ingestion_runs` for audit records
+- Public read policy for tornado tracks
+- `public.upsert_tornado_tracks(payload jsonb)` for server-side ingestion
+
+## SPC Ingestion
+
+The first production ingestion target is:
+
+```bash
+https://www.spc.noaa.gov/wcm/data/1950-2025_actual_tornadoes.csv
+```
+
+Trigger ingestion after setting `SUPABASE_SERVICE_ROLE_KEY` and `INGEST_SECRET`:
+
+```bash
+curl -X POST https://nadoviewer.vercel.app/api/ingest/spc \
+  -H "Authorization: Bearer $INGEST_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"minYear":2010}'
+```
+
+For local smoke testing, pass a small limit:
+
+```bash
+curl -X POST http://localhost:3000/api/ingest/spc \
+  -H "Authorization: Bearer $INGEST_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"minYear":2021,"limit":25}'
+```
+
+The UI reads from `/api/tornadoes`. If Supabase is unavailable or empty, the app falls back to curated seed events.
 
 ## Deployment Plan
 
