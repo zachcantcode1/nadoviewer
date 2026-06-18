@@ -97,14 +97,14 @@ async function runIngest(request: Request) {
 }
 
 function validateIngestAuth(request: Request) {
-  const expectedSecret = process.env.INGEST_SECRET ?? process.env.CRON_SECRET;
-  if (!expectedSecret) {
+  const expectedSecrets = [process.env.INGEST_SECRET, process.env.CRON_SECRET].filter(Boolean);
+  if (!expectedSecrets.length) {
     return Response.json({ error: "INGEST_SECRET or CRON_SECRET must be configured." }, { status: 500 });
   }
 
   const authHeader = request.headers.get("authorization");
   const providedSecret = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
-  if (providedSecret !== expectedSecret) {
+  if (!providedSecret || !expectedSecrets.includes(providedSecret)) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
