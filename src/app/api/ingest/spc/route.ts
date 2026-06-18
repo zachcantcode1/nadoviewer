@@ -56,7 +56,10 @@ async function runIngest(request: Request) {
 
   const body = await readJsonBody(request);
   const spcUrl = process.env.SPC_ACTUAL_TORNADOES_URL ?? defaultSpcUrl;
-  const minYear = toOptionalNumber(body.minYear);
+  const requestUrl = new URL(request.url);
+  const requestedMinYear = toOptionalNumber(body.minYear ?? requestUrl.searchParams.get("minYear"));
+  const maxYear = toOptionalNumber(body.maxYear ?? requestUrl.searchParams.get("maxYear"));
+  const minYear = requestedMinYear ?? (request.method === "GET" ? new Date().getFullYear() - 1 : null);
   const maxRows = toOptionalNumber(body.limit);
   const startedAt = new Date().toISOString();
 
@@ -68,7 +71,10 @@ async function runIngest(request: Request) {
   const csv = await sourceResponse.text();
   const rows = parseCsv(csv);
   const tracks = rows
-    .filter((row) => row.yr && (!minYear || Number(row.yr) >= minYear))
+    .filter((row) => {
+      const year = Number(row.yr);
+      return Number.isFinite(year) && (!minYear || year >= minYear) && (!maxYear || year <= maxYear);
+    })
     .slice(0, maxRows ?? rows.length)
     .map((row) => spcRowToTrack(row, spcUrl))
     .filter((track): track is IngestTrack => Boolean(track));
@@ -90,6 +96,8 @@ async function runIngest(request: Request) {
   return Response.json({
     source: "SPC actual tornadoes",
     sourceUrl: spcUrl,
+    minYear,
+    maxYear,
     rowsSeen: rows.length,
     rowsPrepared: tracks.length,
     rowsLoaded: loaded,

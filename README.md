@@ -94,7 +94,7 @@ Trigger ingestion after setting `SUPABASE_SERVICE_ROLE_KEY` and `INGEST_SECRET`:
 curl -X POST https://nadoviewer.vercel.app/api/ingest/spc \
   -H "Authorization: Bearer $INGEST_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"minYear":2010}'
+  -d '{"minYear":2020,"maxYear":2025}'
 ```
 
 For local smoke testing, pass a small limit:
@@ -105,6 +105,8 @@ curl -X POST http://localhost:3000/api/ingest/spc \
   -H "Content-Type: application/json" \
   -d '{"minYear":2021,"limit":25}'
 ```
+
+Vercel Cron calls the route with `GET`; when no year range is provided, the route refreshes the current and prior year to avoid long serverless runs. Use manual `POST` calls with `minYear` and `maxYear` to backfill the full archive in chunks.
 
 The UI reads from `/api/tornadoes`. If Supabase is unavailable or empty, the app falls back to curated seed events.
 
