@@ -182,9 +182,10 @@ function spcRowToTrack(row: SpcCsvRow, sourceUrl: string): IngestTrack | null {
   const stormNumber = row.stn || row.om;
   const rating = normalizeSpcRating(row.mag, year);
   const date = row.date || `${row.yr}-${row.mo}-${row.dy}`;
+  const id = buildSpcTrackId({ date, row, state, stormNumber });
 
   return {
-    id: `spc-${row.om || `${date}-${state}-${stormNumber}`}`,
+    id,
     name: `${state} Tornado ${stormNumber}`,
     date,
     rating,
@@ -210,6 +211,23 @@ function spcRowToTrack(row: SpcCsvRow, sourceUrl: string): IngestTrack | null {
     coordinates: [start, end],
     geometry_quality: "spc_start_end",
   };
+}
+
+function buildSpcTrackId({
+  date,
+  row,
+  state,
+  stormNumber,
+}: {
+  date: string;
+  row: SpcCsvRow;
+  state: string;
+  stormNumber: string;
+}) {
+  return `spc-${date}-${state}-${stormNumber}-${row.om || "no-om"}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function normalizeSpcRating(magnitude: string, year: number) {
