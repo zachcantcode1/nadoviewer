@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+:root {
+  --background: #071016;
+  --foreground: #e8eef2;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.maplibregl-ctrl-group {
+  background: #0b151c !important;
+  border: 1px solid rgb(255 255 255 / 0.12) !important;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.28) !important;
+}
+
+.maplibregl-ctrl button {
+  filter: invert(1) grayscale(1);
+}
+
+.maplibregl-ctrl-attrib {
+  background: rgb(11 21 28 / 0.82) !important;
+  color: #cbd5e1 !important;
+}
