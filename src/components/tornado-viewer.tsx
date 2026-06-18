@@ -305,13 +305,27 @@ export function TornadoViewer() {
 
     async function loadTracks() {
       try {
-        const response = await fetch("/api/tornadoes?limit=20000", { cache: "no-store" });
+        const params = new URLSearchParams({
+          limit: "20000",
+          minYear: String(filters.minYear),
+          maxYear: String(filters.maxYear),
+          ratings: filters.ratings.join(","),
+          statuses: filters.statuses.join(","),
+        });
+        if (filters.source !== "All") params.set("source", filters.source);
+        if (selectedDate) params.set("date", selectedDate);
+
+        const response = await fetch(`/api/tornadoes?${params.toString()}`, { cache: "no-store" });
         const payload = (await response.json()) as TornadoApiResponse;
-        if (cancelled || !payload.tracks.length) return;
+        if (cancelled) return;
         setTracks(payload.tracks);
         setDataMode(payload.dataMode);
         setDataMessage(payload.message ?? "Supabase tornado rows loaded.");
-        setSelectedTrackId(payload.tracks[0].id);
+        if (payload.tracks.length) {
+          setSelectedTrackId((currentId) =>
+            payload.tracks.some((track) => track.id === currentId) ? currentId : payload.tracks[0].id,
+          );
+        }
       } catch (error) {
         if (!cancelled) {
           setDataMessage(error instanceof Error ? error.message : "Unable to load remote tornado data.");
@@ -324,7 +338,7 @@ export function TornadoViewer() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filters, selectedDate]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
